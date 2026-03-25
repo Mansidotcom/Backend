@@ -1,5 +1,5 @@
 import express from 'express'
-import { allUsers, changePassword, forgotPassword, getUserById, login, logout, otpVerify, refreshToken, register, reVerify, updateUser, verify } from '../controllers/userControllers.js'
+import { allUsers, changePassword, forgotPassword, getMe, getUserById, login, logout, otpVerify, refreshToken, register, reVerify, updateUser, verify } from '../controllers/userControllers.js'
 import { isAdmin, isAuthenticated } from '../middleware/isAuthenticated.js'
 
 import { getSalt } from 'bcryptjs'
@@ -15,6 +15,7 @@ router.get('/verify/:token', verify)
 router.post('/reverify',reVerify) 
 router.post('/login',login)
 router.post("/refresh", refreshToken);
+router.get("/me", isAuthenticated, getMe);
 router.post("/logout", isAuthenticated,logout)
 router.post("/forgot-password", forgotPassword);
 router.post("/verify-otp", otpVerify);

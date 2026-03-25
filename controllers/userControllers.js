@@ -237,6 +237,21 @@ export const logout = async (req, res) => {
   }
 };
 
+export const getMe = async (req, res) => {
+  try {
+    const user = req.user;
+    return res.status(200).json({
+      success: true,
+      user,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 export const refreshToken = async (req, res) => {
   try {
     const { refreshToken } = req.body;
