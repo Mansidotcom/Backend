@@ -8,31 +8,40 @@ import { sendOTPEMail } from "../emailVerify/sendOTPMail.js";
 
 export const register = async (req, res) => {
   try {
+    console.log("Register request received:", req.body);
+
     const { firstname, lastname, email, password } = req.body;
 
     if (!firstname || !lastname || !email || !password) {
+      console.log("Missing required fields");
       return res.status(400).json({
         success: false,
         message: "All fields are required",
       });
     }
 
+    console.log("Checking if user exists...");
     const user = await User.findOne({ email });
     if (user) {
+      console.log("User already exists:", email);
       return res.status(400).json({
         success: false,
         message: "user already exists",
       });
     }
 
+    console.log("Hashing password...");
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    console.log("Creating new user...");
     const newUser = await User.create({
       firstname,
       lastname,
       email,
       password: hashedPassword,
     });
+
+    console.log("User created:", newUser._id);
 
     const token = jwt.sign(
       { id: newUser._id },
@@ -43,13 +52,17 @@ export const register = async (req, res) => {
     newUser.token = token;
     await newUser.save();
 
+    console.log("Token generated and saved");
+
     // 🔥 IMPORTANT FIX (FRONTEND LINK)
     const verifyLink = `https://frontend-wd6m.vercel.app/verify/${token}`;
 
+    console.log("Sending verification email to:", email);
     setTimeout(() => {
       verifyEmail(verifyLink, email);   // ✅ FIXED
     }, 0);
 
+    console.log("Registration successful");
     return res.status(201).json({
       success: true,
       message: "user registered successfully",
@@ -57,6 +70,7 @@ export const register = async (req, res) => {
     });
 
   } catch (error) {
+    console.error("Registration error:", error);
     return res.status(500).json({
       success: false,
       message: error.message,
