@@ -11,11 +11,10 @@ import orderRoute from "./routes/orderRoute.js";
 const app = express();
 const PORT = process.env.PORT || 8000;
 
-// basic middleware
 app.use(express.json());
 app.use(cors());
 
-// routes
+// Routes
 app.use("/api/v1/user", userRoute);
 app.use("/api/v1/products", productRoutes);
 app.use("/api/v1/cart", cartRoute);

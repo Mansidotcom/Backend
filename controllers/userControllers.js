@@ -6,7 +6,6 @@ import { verifyEmail } from "../emailVerify/verifyEmail.js";
 import { Session } from "../models/sessionModel.js";
 import { sendOTPEMail } from "../emailVerify/sendOTPMail.js";
 
-
 export const register = async (req, res) => {
   try {
     const { firstname, lastname, email, password } = req.body;
@@ -41,18 +40,20 @@ export const register = async (req, res) => {
       { expiresIn: "10m" }
     );
 
-    newUser.token = token
-    await newUser.save()
+    newUser.token = token;
+    await newUser.save();
+
+    // 🔥 IMPORTANT FIX (FRONTEND LINK)
+    const verifyLink = `https://frontend-wd6m.vercel.app/verify/${token}`;
 
     setTimeout(() => {
-      verifyEmail(token, email);
+      verifyEmail(verifyLink, email);   // ✅ FIXED
     }, 0);
-
 
     return res.status(201).json({
       success: true,
       message: "user registered successfully",
-      user: newUser
+      user: newUser,
     });
 
   } catch (error) {
@@ -93,14 +94,14 @@ export const verify = async (req, res) => {
 export const reVerify = async (req, res) => {
   try {
     const { email } = req.body;
-    const user = await User.findOne({ email })
+    const user = await User.findOne({ email });
+
     if (!user) {
       return res.status(400).json({
         success: false,
-        message: "user not found"
-      })
+        message: "user not found",
+      });
     }
-
 
     if (user.isVerified) {
       return res.status(400).json({
@@ -111,29 +112,29 @@ export const reVerify = async (req, res) => {
 
     const token = jwt.sign(
       { id: user._id },
-      process.env.JWT_SECRET,   // ✅ FIXED
+      process.env.JWT_SECRET,
       { expiresIn: "10m" }
     );
 
-    user.token = token
-    await user.save()
+    user.token = token;
+    await user.save();
 
-    verifyEmail(token, email);
+    // 🔥 SAME FIX HERE
+    const verifyLink = `https://frontend-wd6m.vercel.app/verify/${token}`;
+    verifyEmail(verifyLink, email);
 
     return res.status(200).json({
       success: true,
       message: "verification email sent again successfully",
+    });
 
-    })
-  }
-  catch (error) {
+  } catch (error) {
     return res.status(500).json({
       success: false,
-      message: error.message
-    })
+      message: error.message,
+    });
   }
-}
-
+};
 
 export const login = async (req, res) => {
   try {
@@ -175,7 +176,7 @@ export const login = async (req, res) => {
     const accessToken = jwt.sign(
       {
         id: existingUser._id,
-        role: existingUser.role   // 
+        role: existingUser.role   // Include the user's role in the access token
       },
       process.env.JWT_SECRET,
       { expiresIn: "10d" }
