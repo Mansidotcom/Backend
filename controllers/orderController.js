@@ -3,6 +3,7 @@ import { Cart } from "../models/cartModel.js"
 import { Order } from "../models/orderModel.js"
 import { Product } from "../models/productsModel.js"
 import { User } from "../models/userModels.js"
+import mongoose from "mongoose"
 
 
 
@@ -21,11 +22,20 @@ export const createOrder = async (req, res) => {
       })
     }
 
-    if (!products || !Array.isArray(products) || products.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Products are required"
-      })
+    // Validate products
+    for (const product of products) {
+      if (!product.productId || !product.quantity) {
+        return res.status(400).json({
+          success: false,
+          message: "Each product must have productId and quantity"
+        })
+      }
+      if (!mongoose.Types.ObjectId.isValid(product.productId)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid productId: ${product.productId}`
+        })
+      }
     }
 
     // save order in DB
