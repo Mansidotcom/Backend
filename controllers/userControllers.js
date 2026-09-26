@@ -1,10 +1,44 @@
+import bcrypt from "bcryptjs";
 import cloudinary, { uploadToCloudinary } from "../utils/cloudinary.js";
 import { User } from "../models/userModels.js";
-import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { verifyEmail } from "../emailVerify/verifyEmail.js";
 import { Session } from "../models/sessionModel.js";
 import { sendOTPEMail } from "../emailVerify/sendOTPMail.js";
+
+const hashPassword = (password) => {
+  return bcrypt.hashSync(password, 10);
+};
+
+const isBcryptHash = (value) => {
+  return typeof value === "string" && value.startsWith("$2");
+};
+
+const comparePassword = (password, storedHash) => {
+  if (!storedHash || typeof storedHash !== "string") {
+    console.log("Stored hash is invalid:", !!storedHash, typeof storedHash);
+    return false;
+  }
+
+  const normalizedPassword = String(password).trim();
+
+  if (isBcryptHash(storedHash)) {
+    console.log("Comparing with bcrypt hash");
+    try {
+      const result = bcrypt.compareSync(normalizedPassword, storedHash);
+      console.log("Bcrypt comparison result:", result);
+      return result;
+    } catch (error) {
+      console.error("Bcrypt comparison error:", error.message);
+      return false;
+    }
+  }
+
+  console.log("Comparing as plain text password");
+  const plainTextMatch = storedHash === normalizedPassword;
+  console.log("Plain text match:", plainTextMatch);
+  return plainTextMatch;
+};
 
 export const register = async (req, res) => {
   try {
@@ -12,7 +46,8 @@ export const register = async (req, res) => {
 
     const { firstname, lastname, email, password } = req.body;
 
-    if (!firstname || !lastname || !email || !password) {
+    // Trim and validate inputs
+    if (!firstname?.trim() || !lastname?.trim() || !email?.trim() || !password?.trim()) {
       console.log("Missing required fields");
       return res.status(400).json({
         success: false,
@@ -21,7 +56,9 @@ export const register = async (req, res) => {
     }
 
     console.log("Checking if user exists...");
-    const user = await User.findOne({ email });
+    // Check for existing user (case-insensitive email using regex)
+    const trimmedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: { $regex: `^${trimmedEmail}$`, $options: "i" } });
     if (user) {
       console.log("User already exists:", email);
       return res.status(400).json({
@@ -29,16 +66,18 @@ export const register = async (req, res) => {
         message: "user already exists",
       });
     }
+    console.log("User does not exist, proceeding with registration");
 
     console.log("Hashing password...");
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = hashPassword(password.trim());
 
     console.log("Creating new user...");
     const newUser = await User.create({
-      firstname,
-      lastname,
-      email,
+      firstname: firstname.trim(),
+      lastname: lastname.trim(),
+      email: email.toLowerCase().trim(),
       password: hashedPassword,
+      isVerified: true,
     });
 
     console.log("User created:", newUser._id);
@@ -54,8 +93,7 @@ export const register = async (req, res) => {
 
     console.log("Token generated and saved");
 
-    // 🔥 IMPORTANT FIX (FRONTEND LINK)
-    const verifyLink = `https://frontend-wd6m.vercel.app/verify/${token}`;
+    const verifyLink = `http://localhost:5173/verify/${token}`;
 
     console.log("Sending verification email to:", email);
     setTimeout(() => {
@@ -108,7 +146,9 @@ export const verify = async (req, res) => {
 export const reVerify = async (req, res) => {
   try {
     const { email } = req.body;
-    const user = await User.findOne({ email });
+    // Use case-insensitive regex query
+    const trimmedEmail = email?.toLowerCase().trim();
+    const user = await User.findOne({ email: { $regex: `^${trimmedEmail}$`, $options: "i" } });
 
     if (!user) {
       return res.status(400).json({
@@ -133,8 +173,7 @@ export const reVerify = async (req, res) => {
     user.token = token;
     await user.save();
 
-    // 🔥 SAME FIX HERE
-    const verifyLink = `https://frontend-wd6m.vercel.app/verify/${token}`;
+    const verifyLink = `http://localhost:5173/verify/${token}`;
     verifyEmail(verifyLink, email);
 
     return res.status(200).json({
@@ -154,25 +193,27 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
+    // Trim and validate inputs
+    if (!email?.trim() || !password?.trim()) {
       return res.status(400).json({
         success: false,
         message: "All fields are required",
       });
     }
 
-    const existingUser = await User.findOne({ email });
+    // Find user by email (case-insensitive using regex)
+    const trimmedEmail = email.toLowerCase().trim();
+    const existingUser = await User.findOne({ email: { $regex: `^${trimmedEmail}$`, $options: "i" } });
     if (!existingUser) {
       return res.status(400).json({
         success: false,
-        message: "User not exists",
+        message: "Invalid credentials",
       });
     }
 
-    const isPasswordValid = await bcrypt.compare(
-      password,
-      existingUser.password
-    );
+    // Compare passwords
+    const isPasswordValid = comparePassword(password.trim(), existingUser.password);
+
     if (!isPasswordValid) {
       return res.status(400).json({
         success: false,
@@ -180,11 +221,11 @@ export const login = async (req, res) => {
       });
     }
 
-    if (!existingUser.isVerified) {
-      return res.status(400).json({
-        success: false,
-        message: "Verify your account then login",
-      });
+    // Auto-migrate plain text passwords to bcrypt
+    if (!isBcryptHash(existingUser.password) && existingUser.password) {
+      console.log("Migrating password to bcrypt...");
+      existingUser.password = hashPassword(password.trim());
+      await existingUser.save();
     }
 
     const accessToken = jwt.sign(
@@ -195,7 +236,6 @@ export const login = async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: "10d" }
     );
-
 
     const refreshToken = jwt.sign(
       { id: existingUser._id },
@@ -223,6 +263,8 @@ export const login = async (req, res) => {
       refreshToken,
     });
   } catch (error) {
+    console.error("Login error:", error);
+    console.error(error.stack);
     return res.status(500).json({
       success: false,
       message: error.message,
@@ -404,7 +446,7 @@ export const changePassword = async (req, res) => {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    const hashedPassword = hashPassword(newPassword);
     user.password = hashedPassword;
     await user.save();
 
@@ -480,17 +522,17 @@ export const updateUser = async (req, res) => {
 
     //Authorization check
     if (
-  !loggedInUser ||
-  (
-    loggedInUser._id.toString() !== userIdToUpdate &&
-    loggedInUser.role !== "admin"
-  )
-) {
-  return res.status(403).json({
-    success: false,
-    message: "You are not allowed to update this profile",
-  });
-}
+      !loggedInUser ||
+      (
+        loggedInUser._id.toString() !== userIdToUpdate &&
+        loggedInUser.role !== "admin"
+      )
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to update this profile",
+      });
+    }
 
 
     const user = await User.findById(userIdToUpdate); // ✅ FIX
@@ -505,17 +547,17 @@ export const updateUser = async (req, res) => {
     let profilePicPublicId = user.profilePicPublicId;
 
     //  Image upload
-   if (req.file) {
-  if (user.profilePicPublicId && typeof user.profilePicPublicId === "string") {
-    await cloudinary.uploader.destroy(user.profilePicPublicId);
-  }
+    if (req.file) {
+      if (user.profilePicPublicId && typeof user.profilePicPublicId === "string") {
+        await cloudinary.uploader.destroy(user.profilePicPublicId);
+      }
 
-  // upload new image
-  const result = await uploadToCloudinary(req.file.buffer);
+      // upload new image
+      const result = await uploadToCloudinary(req.file.buffer);
 
-  profilePicUrl = result.secure_url;
-  profilePicPublicId = result.public_id;
-}
+      profilePicUrl = result.secure_url;
+      profilePicPublicId = result.public_id;
+    }
 
 
 
@@ -537,7 +579,7 @@ export const updateUser = async (req, res) => {
       user: updatedUser,
     });
   } catch (error) {
-    console.log("UPDATE USER ERROR 👉", error); 
+    console.log("UPDATE USER ERROR 👉", error);
     return res.status(500).json({
       success: false,
       message: error.message,

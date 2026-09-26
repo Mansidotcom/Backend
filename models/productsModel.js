@@ -17,7 +17,10 @@ const productsSchema = new mongoose.Schema(
       },
     ],
 
-    productPrice: { type: Number, required: true }, //  Nummber → ✅ Number
+    productPrice: { type: Number, required: true },
+    stock: { type: Number, default: 0 },
+    rating: { type: Number, default: 0 },
+    numReviews: { type: Number, default: 0 },
     category: { type: String },
     brand: { type: String },
   },

@@ -1,14 +1,28 @@
-import multer from "multer";
+import multer from 'multer';
+import path from 'path';
 
 const storage = multer.memoryStorage();
 
-const upload = multer({ storage });
+const fileFilter = (req, file, cb) => {
+  const allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  
+  if (allowedMimes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed.'));
+  }
+};
 
-//single upload
-export const singleUpload = multer({storage}).single("profilePic")
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+});
 
-//multiple upload upto 5 images
-
-export const multipleUpload = multer({ storage }).array("files", 5);
-
-export default upload; 
+export const singleUpload = upload.single('profilePic');
+export const multipleUpload = upload.fields([
+  { name: 'files', maxCount: 5 },
+  { name: 'images', maxCount: 5 },
+]);
